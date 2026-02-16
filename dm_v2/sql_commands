@@ -1,0 +1,25 @@
+CREATE TABLE leads (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(100) NOT NULL,
+  message TEXT NOT NULL,
+  comment TEXT,
+  status VARCHAR(255),
+  time_stamp VARCHAR(100)
+);
+
+CREATE TABLE accounts (
+  id SERIAL PRIMARY KEY,
+  username VARCHAR(100) NOT NULL,
+  password VARCHAR(100) NOT NULL,
+  proxy VARCHAR(255),
+  port VARCHAR(50) NOT NULL,
+  table_name VARCHAR(50) NOT NULL,
+  daily_message_limit INTEGER DEFAULT 80,
+  timezone VARCHAR(80) DEFAULT 'America/Argentina/Buenos_Aires',
+  send_interval_minutes INTEGER DEFAULT 8
+);
+
+-- Para bases de datos existentes:
+-- ALTER TABLE accounts ADD COLUMN daily_message_limit INTEGER DEFAULT 80;
+-- ALTER TABLE accounts ADD COLUMN timezone VARCHAR(80) DEFAULT 'America/Argentina/Buenos_Aires';
+-- ALTER TABLE accounts ADD COLUMN send_interval_minutes INTEGER DEFAULT 8;
