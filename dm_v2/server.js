@@ -9,40 +9,22 @@ import {
   getCurrentProxy,
   getPage,
 } from "./lib/browser.js";
-import { log, registerClient } from "./utils/log.js";
+import { log } from "./utils/log.js";
 import { ensureBrowserActive } from "./utils/helpers.js";
 import {
   checkAndIncrementMessageCount,
   getMessageCount,
 } from "./utils/rate_limiter.js";
-import { pool } from "./db.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
-app.use(express.static("public"));
 
 // ---------- ENV CONFIG ----------
 const PORT = process.env.PORT || 3001;
-const TABLE = process.env.TABLE_NAME || "leads";
-const DASH_USER = process.env.DASH_USER || "admin";
-const DASH_PASS = process.env.DASH_PASS || "7670";
 const USERNAME = process.env.LOGIN_USERNAME;
 const WAIT_BETWEEN_CYCLES_MIN = parseInt(process.env.WAIT_BETWEEN_CYCLES_MIN) || 2;
-
-// ---------- EJS SETUP ----------
-app.set("view engine", "ejs");
-app.set("views", "./views");
-
-// ---------- SSE LOG STREAM ----------
-app.get("/logs", (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders();
-  registerClient(res);
-});
 
 // ---------- GLOBAL FLAGS ----------
 global.isLoopRunning = false;
@@ -110,20 +92,6 @@ export async function runDmCycle() {
   }
 }
 
-// ---------- MANUAL LOG ----------
-app.post("/logthis", (req, res) => {
-  const { message } = req.body;
-  if (!message)
-    return res.status(400).json({ success: false, error: "Missing message" });
-
-  try {
-    log(`🪵 Manual Log: ${message}`);
-    res.json({ success: true, logged: message });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 // ---------- ROUTES ----------
 
 // Start DM loop (flujo local, sin n8n)
@@ -139,6 +107,8 @@ app.post("/start-dm-loop", async (req, res) => {
     const account = await getAccountByUsername(USERNAME);
     if (!account)
       return res.status(404).json({ error: "Account not found in accounts table" });
+    if (account.active === false)
+      return res.status(400).json({ error: "Account is inactive. Set active=true to start." });
 
     const { count, limit } = await getMessageCount(USERNAME);
     if (count >= limit) {
@@ -158,12 +128,7 @@ app.post("/start-dm-loop", async (req, res) => {
   }
 });
 
-// Dashboard UI
-app.get("/", (req, res) => {
-  res.render("index", { DASH_USER, DASH_PASS, USERNAME });
-});
-
-// Login local (desde BD) - reemplaza webhook-proxy-1
+// Login local (desde BD)
 app.post("/login-from-db", async (req, res) => {
   try {
     const { username } = req.body;
@@ -209,7 +174,7 @@ app.post("/login", async (req, res) => {
 
 // ---------- SEND MESSAGE ----------
 app.post("/instagram", ensureBrowserActive, async (req, res) => {
-  const { to, message,comment } = req.body;
+  const { to, message } = req.body;
   const userId = getCurrentUser();
 
   if (!to || !message)
@@ -227,7 +192,7 @@ app.post("/instagram", ensureBrowserActive, async (req, res) => {
     });
 
   try {
-    const result = await sendInstagramMessage(to, message,comment);
+    const result = await sendInstagramMessage(to, message);
     if (result.success) await checkAndIncrementMessageCount(userId);
 
     const updated = await getMessageCount(userId);
@@ -257,78 +222,6 @@ app.post("/viewstory", ensureBrowserActive, async (req, res) => {
   } catch (err) {
     log("[ERROR] /viewstory", err.message);
     res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------- LEADS DASHBOARD ----------
-app.get("/leads", async (req, res) => {
-  try {
-    const result = await pool.query(`SELECT * FROM ${TABLE} ORDER BY id DESC`);
-    res.render("leads", { leads: result.rows });
-  } catch (err) {
-    res.status(500).send("Database error: " + err.message);
-  }
-});
-
-// ---------- BULK CREATE ----------
-app.post("/leads/add", async (req, res) => {
-  try {
-    const { data } = req.body;
-    if (!data) return res.status(400).json({ error: "Missing data field" });
-
-    const entries = data.split("\n").map((line) => {
-      const [username, message] = line.split(",");
-      return { username: username.trim(), message: message?.trim() || "" };
-    });
-
-    for (const lead of entries) {
-      if (!lead.username) continue;
-      await pool.query(
-        `INSERT INTO ${TABLE} (username, message, status, time_stamp) VALUES ($1,$2,$3,$4)`,
-        [lead.username, lead.message, null, null]
-      );
-    }
-
-    res.json({ success: true, added: entries.length });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------- UPDATE LEAD ----------
-app.post("/leads/update/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { username, message, status } = req.body;
-
-    await pool.query(
-      `UPDATE ${TABLE} SET username=$1, message=$2, status=$3 WHERE id=$4`,
-      [username, message, status, id]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------- DELETE SINGLE ----------
-app.post("/leads/delete/:id", async (req, res) => {
-  try {
-    await pool.query(`DELETE FROM ${TABLE} WHERE id=$1`, [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------- DELETE BY FILTER ----------
-app.post("/leads/delete-filter", async (req, res) => {
-  try {
-    const { status } = req.body;
-    await pool.query(`DELETE FROM ${TABLE} WHERE status=$1`, [status]);
-    res.json({ success: true, deleted: status });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 
@@ -367,7 +260,7 @@ app.post("/submit-2fa", async (req, res) => {
       .json({ success: false, message: "No code received" });
 
   global._pending2FA = { code, username: process.env.LOGIN_USERNAME };
-  log(`📩 2FA code ${code} received from dashboard.`);
+  log(`📩 2FA code received via API.`);
   res.json({ success: true });
 });
 
@@ -381,5 +274,5 @@ process.on("uncaughtException", (err) =>
 
 // ---------- START SERVER ----------
 app.listen(PORT, "0.0.0.0", () => {
-  log(`✅ Server running at http://localhost:${PORT} (Table: ${TABLE})`);
+  log(`✅ Server running at http://localhost:${PORT}`);
 });

@@ -11,7 +11,7 @@ services:
     # Mapeo HOST:CONTAINER — por instancia usar puertos distintos en HOST
     # -------------------------
     ports:
-      - "3001:3001"   # Dashboard
+      - "3001:3001"   # API
       - "6080:6080"   # noVNC (browser)
 
     environment:
@@ -23,15 +23,8 @@ services:
       # --- CAMBIAR: tu conexión PostgreSQL ---
       DATABASE_URL: "postgresql://usuario:contraseña@host:5432/nombre_bd?sslmode=require"
 
-      # --- CAMBIAR: credenciales del dashboard web ---
-      DASH_USER: "admin"
-      DASH_PASS: "tu_password_seguro"
-
       # --- CAMBIAR: usuario Instagram (debe existir en tabla accounts) ---
       LOGIN_USERNAME: "tu_usuario_instagram"
-
-      # --- CAMBIAR si usas tabla distinta a leads ---
-      TABLE_NAME: "leads"
 
       # --- Opcionales (valores por defecto si no se definen) ---
       DELAY_STORIES_MIN: "3"

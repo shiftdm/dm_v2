@@ -1,4 +1,6 @@
 import puppeteer from "puppeteer";
+import { execSync } from "child_process";
+import fs from "fs";
 import { getProfilePath, randomDelay } from "../utils/helpers.js";
 import { log } from "../utils/log.js";
 import { getProxyByUsername } from "../utils/proxy.js";
@@ -40,11 +42,21 @@ export async function launchContext(username, session = null) {
 // ---- FETCH PROXY FROM DB ----
 const proxyStr = await getProxyByUsername(username);
 
+    // Resolver ejecutable: si la ruta configurada no existe, usar Chromium del sistema
+    const configuredPath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    const executablePath =
+      configuredPath && fs.existsSync(configuredPath)
+        ? configuredPath
+        : "/usr/bin/chromium";
+    if (configuredPath && configuredPath !== executablePath) {
+      log(`[WARN] Chrome not found at ${configuredPath}, using ${executablePath}`);
+    }
+
     let launchOptions = {
       headless: false, 
       defaultViewport: null,
       userDataDir: userDataPath,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH, // important for Docker
+      executablePath,
       args: [
   "--no-sandbox",
   "--disable-setuid-sandbox",
@@ -88,6 +100,15 @@ if (proxyStr) {
     log(
       `[INFO] Launching browser for ${username} (persistent: ${userDataPath})`
     );
+    // Limpiar locks de Chromium/X11 antes de lanzar
+    try {
+      execSync("/app/cleanup-locks.sh", {
+        stdio: "ignore",
+        env: { ...process.env, LOGIN_USERNAME: username },
+      });
+    } catch (e) {
+      /* ignorar */
+    }
     browser = await puppeteer.launch(launchOptions);
 
     const pages = await browser.pages();
@@ -138,7 +159,7 @@ if (proxyStr) {
       log("[INFO] Instagram login fields detected successfully.");
     } catch (err) {
       log("[WARN] Login input not found yet — retrying once...");
-      await page.waitForTimeout(5000);
+      await new Promise((r) => setTimeout(r, 5000));
       try {
         await page.waitForSelector(
           'input[name="username"], input[name="email"]',

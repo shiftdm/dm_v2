@@ -7,7 +7,7 @@ const DEFAULT_TIMEZONE = "America/Argentina/Buenos_Aires";
 export async function getAccountByUsername(username) {
   try {
     const result = await pool.query(
-      `SELECT username, password, proxy, port, table_name, daily_message_limit, timezone, send_interval_minutes 
+      `SELECT username, password, proxy, port, table_name, daily_message_limit, timezone, send_interval_minutes, active 
        FROM accounts WHERE username = $1 LIMIT 1`,
       [username]
     );

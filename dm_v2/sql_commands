@@ -2,9 +2,8 @@ CREATE TABLE leads (
   id SERIAL PRIMARY KEY,
   username VARCHAR(100) NOT NULL,
   message TEXT NOT NULL,
-  comment TEXT,
   status VARCHAR(255),
-  time_stamp VARCHAR(100)
+  time_stamp TIMESTAMP
 );
 
 CREATE TABLE accounts (

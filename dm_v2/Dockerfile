@@ -46,7 +46,7 @@ WORKDIR /app
 # 5️⃣ Copy package files & install deps
 # -------------------------
 COPY package*.json pnpm-lock.yaml* ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN npm install -g pnpm && pnpm install --no-frozen-lockfile
 
 # -------------------------
 # 6️⃣ Install Chrome via Puppeteer
@@ -61,6 +61,7 @@ RUN CHROME_DIR=$(ls -d /root/.cache/puppeteer/chrome/linux-* 2>/dev/null | head 
 # 7️⃣ Copy project files
 # -------------------------
 COPY . .
+RUN sed -i 's/\r$//' /app/cleanup-locks.sh && chmod +x /app/cleanup-locks.sh
 
 # -------------------------
 # 8️⃣ Puppeteer env config
@@ -80,6 +81,7 @@ EXPOSE 3001 6080
 # 🔟 Start everything
 # -------------------------
 CMD bash -c '\
+/app/cleanup-locks.sh; \
 Xvfb :99 -screen 0 1366x768x24 -ac & \
 sleep 2; \
 x11vnc -display :99 -rfbport 5900 -nopw -forever -shared & \

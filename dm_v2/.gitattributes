@@ -1,0 +1,2 @@
+# Forzar LF (Unix) en scripts shell para evitar "required file not found"
+*.sh text eol=lf

@@ -263,7 +263,7 @@ async function handleNotificationPopup(page) {
   }
 }
 
-function listenForDmBackend(page, timeout = 8000) {
+function listenForDmBackend(page, timeout = 25000) {
   return new Promise((resolve) => {
     let resolved = false;
 
@@ -474,7 +474,7 @@ async function sendMessage(page, dmBackendPromise, message, sender, receiver) {
 // Main Function — Stable 24/7 Runner
 // ------------------------------------
 // ------------------------------------
-export async function sendInstagramMessage(username, message, comment) {
+export async function sendInstagramMessage(username, message) {
   const page = getPage();
   const currentUser = getCurrentUser();
 

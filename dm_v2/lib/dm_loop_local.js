@@ -55,6 +55,12 @@ export async function runDmLoopLocal(username) {
     return { success: false, temp_block: false, message: "Account not found" };
   }
 
+  if (account.active === false) {
+    log(`🛑 Account ${username} is inactive — stopping loop.`);
+    global.isLoopRunning = false;
+    return { success: true, temp_block: false, message: "Loop stopped (account inactive)" };
+  }
+
   const { password, proxy, table_name, send_interval_minutes, timezone } = account;
   const leadsTable = safeTableName(table_name) || "leads";
   const tz = timezone || "America/Argentina/Buenos_Aires";
@@ -93,7 +99,7 @@ export async function runDmLoopLocal(username) {
   let leads;
   try {
     const res = await pool.query(
-      `SELECT id, username, message, comment FROM ${leadsTable} 
+      `SELECT id, username, message FROM ${leadsTable} 
        WHERE (status IS NULL OR status = '') 
        ORDER BY id ASC LIMIT $1`,
       [LEADS_PER_CYCLE]
@@ -116,6 +122,14 @@ export async function runDmLoopLocal(username) {
   for (const lead of leads) {
     if (!global.isLoopRunning) break;
 
+    // Re-verificar si la cuenta sigue activa antes de cada envío
+    const accountCheck = await getAccountByUsername(username);
+    if (accountCheck && accountCheck.active === false) {
+      log(`🛑 Account ${username} set to inactive — stopping loop.`);
+      global.isLoopRunning = false;
+      break;
+    }
+
     // Esperar ventana horaria antes de cada envío (por si pasamos de 11pm)
     const msUntil = getMsUntilSendingWindow(tz);
     if (msUntil > 0) {
@@ -135,14 +149,13 @@ export async function runDmLoopLocal(username) {
     try {
       const result = await sendInstagramMessage(
         lead.username,
-        lead.message || "",
-        lead.comment || ""
+        lead.message || ""
       );
 
       if (result.temp_block === true) {
         log("🚫 TEMP BLOCK detected — stopping loop");
         tempBlockDetected = true;
-        const errTs = new Date().toLocaleString("en-US", { timeZone: tz });
+        const errTs = new Date();
         await pool.query(
           `UPDATE ${leadsTable} SET status = $1, time_stamp = $2 WHERE id = $3`,
           [`not-send ( Error: ${result.error || "temp block"} )`, errTs, lead.id]
@@ -153,10 +166,9 @@ export async function runDmLoopLocal(username) {
       if (result.success) {
         await checkAndIncrementMessageCount(username);
         const now = new Date();
-        const timeStamp = `${now.toLocaleTimeString("en-US", { hour12: true, timeZone: tz })} / ${now.toLocaleDateString("en-CA", { timeZone: tz })}`;
         await pool.query(
           `UPDATE ${leadsTable} SET status = 'send', time_stamp = $1 WHERE id = $2`,
-          [timeStamp, lead.id]
+          [now, lead.id]
         );
         log(`✅ Lead ${lead.id} marked as sent`);
 
@@ -177,7 +189,7 @@ export async function runDmLoopLocal(username) {
         await sleep(delayBetween * 60 * 1000);
       } else {
         // Error al enviar (no temp block)
-        const errTs = new Date().toLocaleString("en-US", { timeZone: tz });
+        const errTs = new Date();
         await pool.query(
           `UPDATE ${leadsTable} SET status = $1, time_stamp = $2 WHERE id = $3`,
           [`not-send ( Error: ${result.error || "unknown"} )`, errTs, lead.id]
@@ -186,7 +198,7 @@ export async function runDmLoopLocal(username) {
       }
     } catch (err) {
       log(`[ERROR] Processing lead ${lead.id}: ${err.message}`);
-      const errTs = new Date().toLocaleString("en-US", { timeZone: tz });
+      const errTs = new Date();
       await pool.query(
         `UPDATE ${leadsTable} SET status = $1, time_stamp = $2 WHERE id = $3`,
         [`not-send ( Error: ${err.message} )`, errTs, lead.id]
